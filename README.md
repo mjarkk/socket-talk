@@ -1,6 +1,7 @@
 # `Socket talk`
 A helper libary for communicating between servers when using a middleware server.  
 This is handy if you have 1 middleware server that is connect to a lot of other servers.  
+Example code can be found [here](./example/)   
 
 ### Requirements:
 - Using [Gin](https://github.com/gin-gonic/gin) on the midleware
