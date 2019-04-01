@@ -87,9 +87,10 @@ func (c *Client) Connect() error {
 
 // WSMessage is a websocket message
 type WSMessage struct {
-	Bytes         []byte
-	ExpectsAnswer bool
-	Aswer         func(data interface{})
+	Bytes         []byte                    // The actual message
+	ExpectsAnswer bool                      // ExectsAnswer is true when the sender expects an answer back
+	Aswer         func(data interface{})    // Aswer sends a message back to the sender
+	BindJSON      func(v interface{}) error // Bind the json data to something, this is the same as json.Unmarshal
 }
 
 // messageHandeler handles all incomming message
@@ -138,6 +139,9 @@ func messageHandeler(c *Client) {
 					}, sendOverwrites{
 						ID: data.ID,
 					})
+				},
+				BindJSON: func(v interface{}) error {
+					return json.Unmarshal(postBytes, &v)
 				},
 			})
 		}(message)
