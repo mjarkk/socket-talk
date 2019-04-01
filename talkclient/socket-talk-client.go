@@ -300,11 +300,11 @@ func (c *Client) Send(title string, data interface{}) error {
 // Use this when you need to be sure the message will actualy be delivered
 func (c *Client) SureSend(title string, data interface{}) error {
 	var res interface{}
-	return c.SendAndReceived(title, data, &res)
+	return c.SendAndReceive(title, data, &res)
 }
 
-// SendAndReceived sends something into the network and waits for a response from someone
-func (c *Client) SendAndReceived(title string, data interface{}, res interface{}) error {
+// SendAndReceive sends something into the network and waits for a response from someone
+func (c *Client) SendAndReceive(title string, data interface{}, res interface{}) error {
 	return send(sendOptions{
 		C:             c,
 		Title:         title,

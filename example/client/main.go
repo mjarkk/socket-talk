@@ -81,7 +81,7 @@ func setupClient2() {
 	<-c.ConnectChan
 
 	var out map[string]string
-	err = c.SendAndReceived("TestMessage", map[string]string{"a": "b"}, &out)
+	err = c.SendAndReceive("TestMessage", map[string]string{"a": "b"}, &out)
 	if err != nil {
 		fmt.Println("send test message recieved error:", err)
 		return
