@@ -4,13 +4,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
 	uuid "github.com/satori/go.uuid"
+	"golang.org/x/crypto/sha3"
 )
 
 // CB short for CallBack are the callback options
@@ -63,8 +68,16 @@ func NewClient(options Options) (*Client, error) {
 	client.Subscriptions = map[string]SubscribeT{}
 
 	go messageHandeler(client)
+	go handleClose(client)
 
 	return client, nil
+}
+
+func handleClose(c *Client) {
+	s := make(chan os.Signal, 1)
+	signal.Notify(s, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
+	<-s
+	c.Disconnect()
 }
 
 // Connect connects the client to a websocket
@@ -156,7 +169,7 @@ func messageHandeler(c *Client) {
 //   return nil
 // }
 func (c *Client) Subscribe(title string, handeler SubscribeT) {
-	c.Subscriptions[title] = handeler
+	c.Subscriptions[calcSha3(title)] = handeler
 }
 
 // Disconnect disconnects the currnet connection
@@ -241,11 +254,13 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 
 	id := uuid.String()
 
+	hashedTitle := calcSha3(options.Title)
+
 	sendToWS := sendMeta{
 		ID:            id,
 		MessageID:     string(messageID),
 		ExpectsAnswer: options.ExpectsAnswer,
-		Title:         options.Title,
+		Title:         hashedTitle,
 	}
 
 	if len(overwrites) > 0 {
@@ -267,12 +282,14 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 		close(end)
 	}(id)
 
-	options.C.Subscriptions[options.Title+id] = func(msg *WSMessage) {
+	subID := calcSha3(hashedTitle + id)
+
+	options.C.Subscriptions[subID] = func(msg *WSMessage) {
 		end <- msg.Bytes
 	}
 
 	returnData, ok := <-end
-	delete(options.C.Subscriptions, options.Title+id)
+	delete(options.C.Subscriptions, subID)
 	if !ok {
 		return errors.New("Request timed out")
 	}
@@ -312,4 +329,10 @@ func (c *Client) SendAndReceive(title string, data interface{}, res interface{})
 		Data:          data,
 		Res:           &res,
 	})
+}
+
+func calcSha3(in string) string {
+	h := sha3.New256()
+	h.Write([]byte(in))
+	return fmt.Sprintf("%x", h.Sum(nil))
 }

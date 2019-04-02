@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/mjarkk/socket-talk/talkclient"
@@ -12,6 +14,12 @@ import (
 var end = make(chan struct{})
 
 func main() {
+	go func() {
+		s := make(chan os.Signal, 1)
+		signal.Notify(s, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+		<-s
+		os.Exit(1)
+	}()
 	setupClient1()
 	setupClient2()
 	<-end
