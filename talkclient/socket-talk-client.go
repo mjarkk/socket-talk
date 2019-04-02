@@ -28,13 +28,14 @@ type SubscribeT func(msg *WSMessage)
 
 // Client is the main type from where it's possible to make request
 type Client struct {
-	ServerURL      string
-	ServerWsURL    string
-	Connected      bool
-	Conn           *websocket.Conn
-	DisconnectChan chan error
-	ConnectChan    chan struct{}
-	Subscriptions  map[string]SubscribeT
+	ServerURL        string
+	ServerWsURL      string
+	Connected        bool
+	Conn             *websocket.Conn
+	DisconnectChan   chan error
+	ConnectChan      chan struct{}
+	innerConnectChan chan struct{}
+	Subscriptions    map[string]SubscribeT
 }
 
 // Options are options that can be used in the NewClient function
@@ -65,6 +66,7 @@ func NewClient(options Options) (*Client, error) {
 
 	client.DisconnectChan = make(chan error)
 	client.ConnectChan = make(chan struct{})
+	client.innerConnectChan = make(chan struct{})
 	client.Subscriptions = map[string]SubscribeT{}
 
 	go messageHandeler(client)
@@ -94,6 +96,7 @@ func (c *Client) Connect() error {
 	c.Connected = true
 	c.Conn = conn
 	c.ConnectChan <- struct{}{}
+	c.innerConnectChan <- struct{}{}
 
 	return <-c.DisconnectChan
 }
@@ -110,8 +113,7 @@ type WSMessage struct {
 func messageHandeler(c *Client) {
 	for {
 		if !c.Connected {
-			time.Sleep(time.Second * 3)
-			continue
+			<-c.innerConnectChan
 		}
 		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
@@ -247,12 +249,16 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 		return err
 	}
 
-	uuid, err := uuid.NewV4()
-	if err != nil {
-		return err
+	id := ""
+	if len(overwrites) > 0 {
+		id = overwrites[0].ID
+	} else {
+		uuid, err := uuid.NewV4()
+		if err != nil {
+			return err
+		}
+		id = uuid.String()
 	}
-
-	id := uuid.String()
 
 	hashedTitle := calcSha3(options.Title)
 
@@ -261,10 +267,6 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 		MessageID:     string(messageID),
 		ExpectsAnswer: options.ExpectsAnswer,
 		Title:         hashedTitle,
-	}
-
-	if len(overwrites) > 0 {
-		sendToWS.ID = overwrites[0].ID
 	}
 
 	err = options.C.Conn.WriteJSON(sendToWS)
@@ -277,10 +279,10 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 	}
 
 	end := make(chan []byte)
-	go func(id string) {
+	go func() {
 		time.Sleep(time.Second * 30)
 		close(end)
-	}(id)
+	}()
 
 	subID := calcSha3(hashedTitle + id)
 
