@@ -36,11 +36,13 @@ type Client struct {
 	ConnectChan      chan struct{}
 	innerConnectChan chan struct{}
 	Subscriptions    map[string]SubscribeT
+	Auth             func([]byte) []byte
 }
 
 // Options are options that can be used in the NewClient function
 type Options struct {
-	ServerURL string // server url, default: http://localhost:8080/
+	Auth      func([]byte) []byte // A function to authenticate the message if not spesified this will be ignored
+	ServerURL string              // server url, default: http://localhost:8080/
 }
 
 // NewClient creates a new client object
@@ -48,6 +50,7 @@ func NewClient(options Options) (*Client, error) {
 	client := &Client{
 		ServerURL:   "http://localhost:8080/",
 		ServerWsURL: "ws://localhost:8080/",
+		Auth:        options.Auth,
 	}
 
 	if options.ServerURL != "" {
@@ -269,7 +272,16 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 		Title:         hashedTitle,
 	}
 
-	err = options.C.Conn.WriteJSON(sendToWS)
+	jsonData, err := json.Marshal(sendToWS)
+	if err != nil {
+		return err
+	}
+
+	if options.C.Auth == nil {
+		err = options.C.Conn.WriteMessage(1, jsonData)
+	} else {
+		err = options.C.Conn.WriteMessage(1, options.C.Auth(jsonData))
+	}
 	if err != nil {
 		return err
 	}
