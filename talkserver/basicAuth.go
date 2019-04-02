@@ -2,6 +2,8 @@ package talkserver
 
 import (
 	"bytes"
+
+	"github.com/mjarkk/socket-talk/src"
 )
 
 // AuthWithKey is an auth function that
@@ -12,7 +14,7 @@ func AuthWithKey(key string) func(msg []byte) ([]byte, bool) {
 		panic("AuthWithKey key is empty")
 	}
 
-	hashedKey := []byte(calcSha3(key))
+	hashedKey := []byte(src.Hash(key))
 
 	return func(msg []byte) ([]byte, bool) {
 		if !bytes.HasPrefix(msg, hashedKey) {
