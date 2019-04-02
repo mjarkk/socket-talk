@@ -2,6 +2,7 @@ package talkserver
 
 import (
 	"bytes"
+	"fmt"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,9 @@ func Setup(r *gin.Engine) {
 }
 
 func handleMessages(m *melody.Melody) {
+	m.HandleConnect(func(s *melody.Session) {
+		fmt.Println("CONNECT:", s.Request.RemoteAddr)
+	})
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
 		m.BroadcastOthers(msg, s)
 	})
