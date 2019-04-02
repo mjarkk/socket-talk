@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/mjarkk/socket-talk/src"
 	uuid "github.com/satori/go.uuid"
-	"golang.org/x/crypto/sha3"
 )
 
 // CB short for CallBack are the callback options
@@ -101,6 +101,16 @@ func (c *Client) Connect() error {
 	c.ConnectChan <- struct{}{}
 	c.innerConnectChan <- struct{}{}
 
+	var res interface{}
+	err = send(sendOptions{
+		C:             c,
+		Title:         "INIT",
+		ExpectsAnswer: true,
+		Data:          struct{}{},
+		Res:           &res,
+	})
+	fmt.Println(err)
+
 	return <-c.DisconnectChan
 }
 
@@ -125,7 +135,7 @@ func messageHandeler(c *Client) {
 			continue
 		}
 		go func(message []byte) {
-			var data sendMeta
+			var data src.SendMeta
 			err := json.Unmarshal(message, &data)
 			if err != nil {
 				return
@@ -136,13 +146,16 @@ func messageHandeler(c *Client) {
 				return
 			}
 
-			postBytes, err := post(c.ServerURL+"socketTalk/get", struct {
-				ID string `json:"ID"`
-			}{
-				ID: data.MessageID,
-			})
-			if err != nil {
-				return
+			postBytes := []byte{}
+			if data.MessageID != "" {
+				postBytes, err = post(c.ServerURL+"socketTalk/get", struct {
+					ID string `json:"ID"`
+				}{
+					ID: data.MessageID,
+				})
+				if err != nil {
+					return
+				}
 			}
 
 			handeler(&WSMessage{
@@ -174,7 +187,7 @@ func messageHandeler(c *Client) {
 //   return nil
 // }
 func (c *Client) Subscribe(title string, handeler SubscribeT) {
-	c.Subscriptions[calcSha3(title)] = handeler
+	c.Subscriptions[src.Hash(title)] = handeler
 }
 
 // Disconnect disconnects the currnet connection
@@ -185,13 +198,6 @@ func (c *Client) Disconnect() {
 	c.Connected = false
 	c.Conn.Close()
 	c.DisconnectChan <- nil
-}
-
-type sendMeta struct {
-	Title         string `json:"title"`
-	ID            string `json:"ID"`
-	MessageID     string `json:"messageID"`
-	ExpectsAnswer bool   `json:"expectsAnswer"`
 }
 
 // post makes a post request
@@ -241,6 +247,11 @@ type sendOverwrites struct {
 	ID string
 }
 
+type endT struct {
+	Bytes []byte
+	Err   error
+}
+
 // send is the underlaying function that sends something into the network
 func send(options sendOptions, overwrites ...sendOverwrites) error {
 	if !options.C.Connected {
@@ -263,9 +274,9 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 		id = uuid.String()
 	}
 
-	hashedTitle := calcSha3(options.Title)
+	hashedTitle := src.Hash(options.Title)
 
-	sendToWS := sendMeta{
+	sendToWS := src.SendMeta{
 		ID:            id,
 		MessageID:     string(messageID),
 		ExpectsAnswer: options.ExpectsAnswer,
@@ -290,16 +301,24 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 		return nil
 	}
 
-	end := make(chan []byte)
+	end := make(chan endT)
 	go func() {
 		time.Sleep(time.Second * 30)
 		close(end)
 	}()
 
-	subID := calcSha3(hashedTitle + id)
+	subID := src.Hash(hashedTitle + id)
 
 	options.C.Subscriptions[subID] = func(msg *WSMessage) {
-		end <- msg.Bytes
+		end <- endT{
+			Bytes: msg.Bytes,
+		}
+	}
+
+	options.C.Subscriptions[src.Hash("SOCKET_TALK_AUTH_FAILED")] = func(msg *WSMessage) {
+		end <- endT{
+			Err: errors.New("Authentication failed"),
+		}
 	}
 
 	returnData, ok := <-end
@@ -308,7 +327,11 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 		return errors.New("Request timed out")
 	}
 
-	err = json.Unmarshal(returnData, &options.Res)
+	if returnData.Err != nil {
+		return returnData.Err
+	}
+
+	err = json.Unmarshal(returnData.Bytes, &options.Res)
 	if err != nil {
 		return err
 	}
@@ -343,10 +366,4 @@ func (c *Client) SendAndReceive(title string, data interface{}, res interface{})
 		Data:          data,
 		Res:           &res,
 	})
-}
-
-func calcSha3(in string) string {
-	h := sha3.New256()
-	h.Write([]byte(in))
-	return fmt.Sprintf("%x", h.Sum(nil))
 }

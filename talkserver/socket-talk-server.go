@@ -2,12 +2,12 @@ package talkserver
 
 import (
 	"bytes"
-	"fmt"
+	"encoding/json"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mjarkk/socket-talk/src"
 	uuid "github.com/satori/go.uuid"
-	"golang.org/x/crypto/sha3"
 	"gopkg.in/olahol/melody.v1"
 )
 
@@ -48,11 +48,15 @@ func handleMessages(m *melody.Melody, o Options) {
 			m.BroadcastOthers(msg, s)
 			return
 		}
+
 		msg, ok := o.Auth(msg)
 		if !ok {
-			// TODO: Return some message authentication failed
+			send(s, src.SendMeta{
+				Title: src.Hash("SOCKET_TALK_AUTH_FAILED"),
+			})
 			return
 		}
+
 		m.BroadcastOthers(msg, s)
 	})
 }
@@ -72,24 +76,32 @@ type getCachePost struct {
 	ID string `json:"ID"`
 }
 
+func addToCache(toAdd []byte) (string, error) {
+	uuid, err := uuid.NewV4()
+	if err != nil {
+		return "", err
+	}
+	id := src.Hash(uuid.String())
+
+	cache[id] = toAdd
+	go func(id string) {
+		time.Sleep(time.Second * 20)
+		delete(cache, id)
+	}(id)
+
+	return id, nil
+}
+
 func setupCache(r *gin.Engine) {
 	r.POST("/socketTalk/set", func(c *gin.Context) {
-		uuid, err := uuid.NewV4()
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(c.Request.Body)
+		id, err := addToCache(buf.Bytes())
 		if err != nil {
 			c.String(400, err.Error())
 			return
 		}
-		id := calcSha3(uuid.String())
 		c.String(200, id)
-
-		buf := new(bytes.Buffer)
-		buf.ReadFrom(c.Request.Body)
-
-		go func(bytes []byte, id string) {
-			cache[id] = bytes
-			time.Sleep(time.Second * 20)
-			delete(cache, id)
-		}(buf.Bytes(), id)
 	})
 
 	r.POST("/socketTalk/get", func(c *gin.Context) {
@@ -110,8 +122,12 @@ func setupCache(r *gin.Engine) {
 	})
 }
 
-func calcSha3(in string) string {
-	h := sha3.New256()
-	h.Write([]byte(in))
-	return fmt.Sprintf("%x", h.Sum(nil))
+// send sends something to a spesific object
+func send(s *melody.Session, toSend interface{}) error {
+	meta, err := json.Marshal(toSend)
+	if err != nil {
+		return err
+	}
+
+	return s.Write(meta)
 }
