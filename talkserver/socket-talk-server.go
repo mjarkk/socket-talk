@@ -18,6 +18,10 @@ type Options struct {
 	// The return values are the message that gets send to all other client
 	// And a bool that tells if the Auth was correct
 	Auth func(msg []byte) ([]byte, bool)
+
+	// if SendKeepAlive is true the server will send a keep alive message every 30 seconds
+	// the message is "🤖️"
+	SendKeepAlive bool
 }
 
 // Setup sets up the needed routes and sets up the websocket route
@@ -38,11 +42,11 @@ func Setup(r *gin.Engine, o ...Options) {
 	})
 
 	setupCache(r)
-	handleMessages(m, options)
-	go keepAlive(m)
+	handleMessages(m, &options)
+	go keepAlive(m, &options)
 }
 
-func handleMessages(m *melody.Melody, o Options) {
+func handleMessages(m *melody.Melody, o *Options) {
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
 		if o.Auth == nil {
 			m.BroadcastOthers(msg, s)
@@ -61,12 +65,14 @@ func handleMessages(m *melody.Melody, o Options) {
 	})
 }
 
-func keepAlive(m *melody.Melody) {
-	for {
-		// A keep alive message that makes sure the clients stay connected
-		// This bypasses the timeout on proxyies
-		time.Sleep(time.Second * 30)
-		m.Broadcast([]byte("🤖️"))
+func keepAlive(m *melody.Melody, o *Options) {
+	if o.SendKeepAlive {
+		for {
+			// A keep alive message that makes sure the clients stay connected
+			// This bypasses the timeout on proxyies
+			time.Sleep(time.Second * 30)
+			m.Broadcast([]byte("🤖️"))
+		}
 	}
 }
 
