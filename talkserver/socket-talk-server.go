@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	uuid "github.com/satori/go.uuid"
+	"golang.org/x/crypto/sha3"
 	"gopkg.in/olahol/melody.v1"
 )
 
@@ -23,9 +24,6 @@ func Setup(r *gin.Engine) {
 }
 
 func handleMessages(m *melody.Melody) {
-	m.HandleConnect(func(s *melody.Session) {
-		fmt.Println("CONNECT:", s.Request.RemoteAddr)
-	})
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
 		m.BroadcastOthers(msg, s)
 	})
@@ -53,7 +51,7 @@ func setupCache(r *gin.Engine) {
 			c.String(400, err.Error())
 			return
 		}
-		id := uuid.String()
+		id := calcSha3(uuid.String())
 		c.String(200, id)
 
 		buf := new(bytes.Buffer)
@@ -82,4 +80,10 @@ func setupCache(r *gin.Engine) {
 
 		c.Data(200, "text/plain", cacheItem)
 	})
+}
+
+func calcSha3(in string) string {
+	h := sha3.New256()
+	h.Write([]byte(in))
+	return fmt.Sprintf("%x", h.Sum(nil))
 }
