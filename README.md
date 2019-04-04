@@ -4,7 +4,7 @@ This is handy if you have 1 middleware server that is connect to a lot of other 
 Example code can be found [here](./example/)   
 
 ### Requirements:
-- Using [Gin](https://github.com/gin-gonic/gin) on the midleware
+- Using [Gin](https://github.com/gin-gonic/gin) on the middleware
 - A connection to the middleware that allows http post messages and websockets
 
 ### TODOs:
