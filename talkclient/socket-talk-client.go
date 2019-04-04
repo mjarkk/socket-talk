@@ -37,12 +37,14 @@ type Client struct {
 	innerConnectChan chan struct{}
 	Subscriptions    map[string]SubscribeT
 	Auth             func([]byte) []byte
+	NoProxy          bool
 }
 
 // Options are options that can be used in the NewClient function
 type Options struct {
 	Auth      func([]byte) []byte // A function to authenticate the message if not spesified this will be ignored
 	ServerURL string              // server url, default: http://localhost:8080/
+	NoProxy   bool                // Turn off proxy settings
 }
 
 // NewClient creates a new client object
@@ -51,6 +53,7 @@ func NewClient(options Options) (*Client, error) {
 		ServerURL:   "http://localhost:8080/",
 		ServerWsURL: "ws://localhost:8080/",
 		Auth:        options.Auth,
+		NoProxy:     options.NoProxy,
 	}
 
 	if options.ServerURL != "" {
@@ -93,7 +96,12 @@ func (c *Client) Connect() error {
 		return errors.New("Already connected")
 	}
 
-	conn, _, err := websocket.DefaultDialer.Dial(c.ServerWsURL+"socketTalk/ws", nil)
+	dailer := websocket.Dialer{}
+	if !c.NoProxy {
+		dailer.Proxy = http.ProxyFromEnvironment
+	}
+
+	conn, _, err := dailer.Dial(c.ServerWsURL+"socketTalk/ws", nil)
 	if err != nil {
 		return err
 	}
