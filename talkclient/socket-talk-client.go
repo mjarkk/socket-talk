@@ -64,7 +64,7 @@ func NewClient(options Options) (*Client, error) {
 		}
 
 		client.ServerWsURL = client.ServerURL
-		client.ServerWsURL = strings.Replace(client.ServerWsURL, "https://", "ws://", 1)
+		client.ServerWsURL = strings.Replace(client.ServerWsURL, "https://", "wss://", 1)
 		client.ServerWsURL = strings.Replace(client.ServerWsURL, "http://", "ws://", 1)
 	}
 
