@@ -63,8 +63,9 @@ func NewClient(options Options) (*Client, error) {
 			client.ServerURL = client.ServerURL + "/"
 		}
 
-		client.ServerWsURL = strings.Replace(client.ServerURL, "https://", "ws://", 1)
-		client.ServerWsURL = strings.Replace(client.ServerURL, "http://", "ws://", 1)
+		client.ServerWsURL = client.ServerURL
+		client.ServerWsURL = strings.Replace(client.ServerWsURL, "https://", "ws://", 1)
+		client.ServerWsURL = strings.Replace(client.ServerWsURL, "http://", "ws://", 1)
 	}
 
 	client.DisconnectChan = make(chan error)
