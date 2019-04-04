@@ -161,7 +161,7 @@ func messageHandeler(c *Client) {
 					ID string `json:"ID"`
 				}{
 					ID: data.MessageID,
-				})
+				}, c.NoProxy)
 				if err != nil {
 					return
 				}
@@ -210,7 +210,7 @@ func (c *Client) Disconnect() {
 }
 
 // post makes a post request
-func post(url string, msg interface{}) ([]byte, error) {
+func post(url string, msg interface{}, noProxy bool) ([]byte, error) {
 	buf := new(bytes.Buffer)
 
 	if msg != nil {
@@ -231,6 +231,12 @@ func post(url string, msg interface{}) ([]byte, error) {
 	}
 
 	client := &http.Client{}
+	if noProxy {
+		var transport http.RoundTripper = &http.Transport{
+			Proxy: nil,
+		}
+		client.Transport = transport
+	}
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -267,7 +273,7 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 		return errors.New("Can't send of a closed connection")
 	}
 
-	messageID, err := post(options.C.ServerURL+"socketTalk/set", options.Data)
+	messageID, err := post(options.C.ServerURL+"socketTalk/set", options.Data, options.C.NoProxy)
 	if err != nil {
 		return err
 	}
