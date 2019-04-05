@@ -9,6 +9,5 @@ Example code can be found [here](./example/)
 
 ### TODOs:
 - Make the api more robust. The client side needs quite a bit of code to set up and the behaviour of the code is not compeetly obvious
-- Authentication
 - Message signing
 - Encryption

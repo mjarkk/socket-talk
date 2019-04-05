@@ -4,13 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
-	"os/signal"
+	"net/url"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -77,16 +74,8 @@ func NewClient(options Options) (*Client, error) {
 	client.Subscriptions = map[string]SubscribeT{}
 
 	go messageHandeler(client)
-	go handleClose(client)
 
 	return client, nil
-}
-
-func handleClose(c *Client) {
-	s := make(chan os.Signal, 1)
-	signal.Notify(s, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
-	<-s
-	c.Disconnect()
 }
 
 // Connect connects the client to a websocket
@@ -97,7 +86,11 @@ func (c *Client) Connect() error {
 	}
 
 	dailer := websocket.Dialer{}
-	if !c.NoProxy {
+	if c.NoProxy {
+		dailer.Proxy = func(*http.Request) (*url.URL, error) {
+			return nil, nil
+		}
+	} else {
 		dailer.Proxy = http.ProxyFromEnvironment
 	}
 
@@ -118,7 +111,6 @@ func (c *Client) Connect() error {
 		Data:          struct{}{},
 		Res:           &res,
 	})
-	fmt.Println(err)
 
 	return <-c.DisconnectChan
 }
@@ -270,7 +262,7 @@ type endT struct {
 // send is the underlaying function that sends something into the network
 func send(options sendOptions, overwrites ...sendOverwrites) error {
 	if !options.C.Connected {
-		return errors.New("Can't send of a closed connection")
+		return errors.New("Can't send to a closed connection")
 	}
 
 	messageID, err := post(options.C.ServerURL+"socketTalk/set", options.Data, options.C.NoProxy)
