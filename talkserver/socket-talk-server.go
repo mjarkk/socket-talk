@@ -3,6 +3,7 @@ package talkserver
 import (
 	"bytes"
 	"encoding/json"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -76,6 +77,7 @@ func keepAlive(m *melody.Melody, o *Options) {
 	}
 }
 
+var cacheLock sync.RWMutex
 var cache = map[string][]byte{}
 
 type getCachePost struct {
@@ -89,10 +91,17 @@ func addToCache(toAdd []byte) (string, error) {
 	}
 	id := src.Hash(uuid.String())
 
+	cacheLock.Lock()
 	cache[id] = toAdd
+	cacheLock.Unlock()
+
 	go func(id string) {
 		time.Sleep(time.Second * 20)
+
+		cacheLock.Lock()
 		delete(cache, id)
+		cacheLock.Unlock()
+
 	}(id)
 
 	return id, nil
@@ -118,7 +127,10 @@ func setupCache(r *gin.Engine) {
 			return
 		}
 
+		cacheLock.Lock()
 		cacheItem, ok := cache[data.ID]
+		cacheLock.Unlock()
+
 		if !ok {
 			c.String(400, "ID is wrong")
 			return
