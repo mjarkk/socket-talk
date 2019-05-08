@@ -1,4 +1,4 @@
-# `Socket talk`
+# `Socket talk` Talk between servers using a middleware
 A helper libary for communicating between servers when using a middleware server.  
 This is handy if you have 1 middleware server that is connect to a lot of other servers.  
 Example code can be found [here](./example/)   
