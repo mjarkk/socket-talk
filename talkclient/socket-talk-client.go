@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -22,6 +23,8 @@ type CB struct {
 
 // SubscribeT is the global type for all subscriptions
 type SubscribeT func(msg *WSMessage)
+
+var sockLock sync.Mutex
 
 // Client is the main type from where it's possible to make request
 type Client struct {
@@ -296,9 +299,13 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 	}
 
 	if options.C.Auth == nil {
+		sockLock.Lock()
 		err = options.C.Conn.WriteMessage(1, jsonData)
+		sockLock.Unlock()
 	} else {
+		sockLock.Lock()
 		err = options.C.Conn.WriteMessage(1, options.C.Auth(jsonData))
+		sockLock.Unlock()
 	}
 	if err != nil {
 		return err
