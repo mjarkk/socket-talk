@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,7 +24,10 @@ type CB struct {
 }
 
 // SubscribeT is the global type for all subscriptions
-type SubscribeT func(msg *WSMessage)
+type SubscribeT struct {
+	Handeler     func(msg *WSMessage)
+	Subscription string // The non-hased subscription
+}
 
 var sockLock sync.Mutex
 
@@ -38,6 +43,7 @@ type Client struct {
 	Subscriptions    map[string]SubscribeT
 	Auth             func([]byte) []byte
 	NoProxy          bool
+	Logging          bool
 }
 
 // Options are options that can be used in the NewClient function
@@ -45,6 +51,7 @@ type Options struct {
 	Auth      func([]byte) []byte // A function to authenticate the message if not spesified this will be ignored
 	ServerURL string              // server url, default: http://localhost:8080/
 	NoProxy   bool                // Turn off proxy settings
+	Logging   bool                // If this is true the request will be logged
 }
 
 // NewClient creates a new client object
@@ -54,6 +61,7 @@ func NewClient(options Options) (*Client, error) {
 		ServerWsURL: "ws://localhost:8080/",
 		Auth:        options.Auth,
 		NoProxy:     options.NoProxy,
+		Logging:     options.Logging,
 	}
 
 	if options.ServerURL != "" {
@@ -126,6 +134,45 @@ type WSMessage struct {
 	BindJSON      func(v interface{}) error // Bind the json data to something, this is the same as json.Unmarshal
 }
 
+func toTimePart(in int) string {
+	toReturn := strconv.Itoa(in)
+	if len(toReturn) == 1 {
+		toReturn = "0" + toReturn
+	}
+	return toReturn
+}
+
+func (c *Client) log(sendOrRec bool, what string) {
+	if c.Logging {
+		direction := "←"
+		if sendOrRec {
+			direction = "→"
+		}
+
+		t := time.Now()
+		seconds := toTimePart(t.Second())
+		minutes := toTimePart(t.Minute())
+		hour := toTimePart(t.Hour())
+		day := toTimePart(t.Day())
+		month := toTimePart(int(t.Month()))
+
+		fmt.Printf(
+			"[SOCK-TALK] %v/%v/%v - %v:%v:%v (%v) %v\n",
+
+			t.Year(),
+			month,
+			day,
+
+			hour,
+			minutes,
+			seconds,
+
+			direction,
+			what,
+		)
+	}
+}
+
 // messageHandeler handles all incomming message
 func messageHandeler(c *Client) {
 	for {
@@ -145,10 +192,13 @@ func messageHandeler(c *Client) {
 				return
 			}
 
-			handeler, ok := c.Subscriptions[data.Title]
+			sub, ok := c.Subscriptions[data.Title]
 			if !ok {
+				c.log(false, data.Title)
 				return
 			}
+
+			c.log(false, sub.Subscription)
 
 			postBytes := []byte{}
 			if data.MessageID != "" {
@@ -162,7 +212,7 @@ func messageHandeler(c *Client) {
 				}
 			}
 
-			handeler(&WSMessage{
+			sub.Handeler(&WSMessage{
 				Bytes:         postBytes,
 				ExpectsAnswer: data.ExpectsAnswer,
 				Aswer: func(content interface{}) {
@@ -190,8 +240,11 @@ func messageHandeler(c *Client) {
 //   fmt.Println(string(msg.Bytes))
 //   return nil
 // }
-func (c *Client) Subscribe(title string, handeler SubscribeT) {
-	c.Subscriptions[src.Hash(title)] = handeler
+func (c *Client) Subscribe(title string, handeler func(msg *WSMessage)) {
+	c.Subscriptions[src.Hash(title)] = SubscribeT{
+		handeler,
+		title,
+	}
 }
 
 // Disconnect disconnects the currnet connection
@@ -285,7 +338,6 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 	}
 
 	hashedTitle := src.Hash(options.Title)
-
 	sendToWS := src.SendMeta{
 		ID:            id,
 		MessageID:     string(messageID),
@@ -297,6 +349,8 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 	if err != nil {
 		return err
 	}
+
+	options.C.log(true, options.Title)
 
 	if options.C.Auth == nil {
 		sockLock.Lock()
@@ -323,16 +377,22 @@ func send(options sendOptions, overwrites ...sendOverwrites) error {
 
 	subID := src.Hash(hashedTitle + id)
 
-	options.C.Subscriptions[subID] = func(msg *WSMessage) {
-		end <- endT{
-			Bytes: msg.Bytes,
-		}
+	options.C.Subscriptions[subID] = SubscribeT{
+		Handeler: func(msg *WSMessage) {
+			end <- endT{
+				Bytes: msg.Bytes,
+			}
+		},
+		Subscription: options.Title,
 	}
 
-	options.C.Subscriptions[src.Hash("SOCKET_TALK_AUTH_FAILED")] = func(msg *WSMessage) {
-		end <- endT{
-			Err: errors.New("Authentication failed"),
-		}
+	options.C.Subscriptions[src.Hash("SOCKET_TALK_AUTH_FAILED")] = SubscribeT{
+		Handeler: func(msg *WSMessage) {
+			end <- endT{
+				Err: errors.New("Authentication failed"),
+			}
+		},
+		Subscription: "SOCKET_TALK_AUTH_FAILED",
 	}
 
 	returnData, ok := <-end
