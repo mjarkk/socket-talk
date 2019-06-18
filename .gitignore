@@ -1,2 +1,4 @@
 example/*/client
 example/*/middleware
+test/*/client
+test/*/server

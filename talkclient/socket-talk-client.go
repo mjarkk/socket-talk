@@ -44,6 +44,7 @@ type Client struct {
 	Auth             func([]byte) []byte
 	NoProxy          bool
 	Logging          bool
+	SendedToChan     bool
 }
 
 // Options are options that can be used in the NewClient function
@@ -111,17 +112,11 @@ func (c *Client) Connect() error {
 	}
 	c.Connected = true
 	c.Conn = conn
-	c.ConnectChan <- struct{}{}
+	if !c.SendedToChan {
+		c.ConnectChan <- struct{}{}
+	}
+	c.SendedToChan = true
 	c.innerConnectChan <- struct{}{}
-
-	var res interface{}
-	err = send(sendOptions{
-		C:             c,
-		Title:         "INIT",
-		ExpectsAnswer: true,
-		Data:          struct{}{},
-		Res:           &res,
-	})
 
 	return <-c.DisconnectChan
 }
@@ -181,8 +176,7 @@ func messageHandeler(c *Client) {
 		}
 		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
-			c.DisconnectChan <- err
-			c.Disconnect()
+			c.Disconnect(err)
 			continue
 		}
 		go func(message []byte) {
@@ -248,13 +242,13 @@ func (c *Client) Subscribe(title string, handeler func(msg *WSMessage)) {
 }
 
 // Disconnect disconnects the currnet connection
-func (c *Client) Disconnect() {
+func (c *Client) Disconnect(err error) {
 	if !c.Connected {
 		return
 	}
 	c.Connected = false
 	c.Conn.Close()
-	c.DisconnectChan <- nil
+	c.DisconnectChan <- err
 }
 
 // post makes a post request
